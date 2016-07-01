@@ -26,13 +26,14 @@
 #include <sys/types.h>
 #include <unistd.h>
 #include <sys/mman.h>
-
 #include <hardware/gralloc.h>
 #include <cutils/native_handle.h>
 #include "alloc_device.h"
 #include <utils/Log.h>
-
 #include "format_chooser.h"
+
+/*---------------------------------------------------------------------------*/
+
 #define MALI_ION    1
 #define GET_VPU_INTO_FROM_HEAD      0 //zxl: 0:get vpu info from head of handle base  1:get vpu info from end of handle base
 
@@ -52,8 +53,8 @@ typedef struct ion_handle *ion_user_handle_t;
 #endif /* MALI_ION */
 
 /* NOTE:
- * If your framebuffer device driver is integrated with UMP, you will have to 
- * change this IOCTL definition to reflect your integration with the framebuffer 
+ * If your framebuffer device driver is integrated with UMP, you will have to
+ * change this IOCTL definition to reflect your integration with the framebuffer
  * device.
  * Expected return value is a UMP secure id backing your framebuffer device memory.
  */
@@ -69,7 +70,7 @@ typedef struct ion_handle *ion_user_handle_t;
  * backing your framebuffer device memory.
  */
 #if GRALLOC_ARM_DMA_BUF_MODULE
-struct fb_dmabuf_export 
+struct fb_dmabuf_export
 {
 	__u32 fd;
 	__u32 flags;
@@ -92,13 +93,20 @@ struct fb_dmabuf_export
 #define GRALLOC_ARM_NUM_FDS 0
 #endif
 
-#define NUM_INTS_IN_PRIVATE_HANDLE ((sizeof(private_handle_t) - sizeof(native_handle)) / sizeof(int) - sNumFds)
+#define NUM_INTS_IN_PRIVATE_HANDLE ((sizeof(struct private_handle_t) - sizeof(native_handle)) / sizeof(int) - sNumFds)
 
-
+enum
+{
+	/* Buffer won't be allocated as AFBC */
+	GRALLOC_ARM_USAGE_NO_AFBC = GRALLOC_USAGE_PRIVATE_1 | GRALLOC_USAGE_PRIVATE_2
+};
 
 #if GRALLOC_ARM_UMP_MODULE
 #include <ump/ump.h>
 #endif
+
+#define SZ_4K      0x00001000
+#define SZ_2M      0x00200000
 
 typedef enum
 {
@@ -122,7 +130,7 @@ struct private_module_t
 {
 	gralloc_module_t base;
 
-	private_handle_t* framebuffer;
+	struct private_handle_t* framebuffer;
 	uint32_t flags;
 	uint32_t numBuffers;
 	uint32_t bufferMask;
@@ -144,8 +152,46 @@ struct private_module_t
 		PRIV_USAGE_LOCKED_FOR_POST = 0x80000000
 	};
 
+    /*-------------------------------------------------------*/
+/**
+ * 对预期宏配置的检查,
+ * 用于检查依赖 private_handle_t 的 模块 (mali_so 等), 编译期对相关宏配置正确. 
+ */
+#if GRALLOC_ARM_DMA_BUF_MODULE != 1
+#error
+#endif
+
+#if GRALLOC_ARM_UMP_MODULE != 0
+#error
+#endif
+
+#if MALI_PRODUCT_ID_T86X != 1 \
+    && MALI_PRODUCT_ID_T76X != 1 \
+    && MALI_PRODUCT_ID_T72X != 1
+#error "we must define MALI_PRODUCT_ID_TXXX for current Mali GPU."
+#endif
+
+#ifndef MALI_AFBC_GRALLOC
+#error "we must config MALI_AFBC_GRALLOC explicitly."
+#endif
+/* 要求在 mali-t860 上使用 AFBC. */
+#if MALI_PRODUCT_ID_T86X == 1 && MALI_AFBC_GRALLOC != 1
+#error "we must enable AFBC for mali-t860."
+#endif
+
+#if MALI_PRODUCT_ID_T76X == 1 && MALI_AFBC_GRALLOC != 1
+#error "we must enable AFBC for mali-t760."
+#endif
+
+#if MALI_PRODUCT_ID_T72X == 1 && MALI_AFBC_GRALLOC != 0
+#error "we must NOT enable AFBC for mali-t720."
+#endif
+    /*-------------------------------------------------------*/
+
+#ifdef __cplusplus
 	/* default constructor */
 	private_module_t();
+#endif
 };
 
 #ifdef __cplusplus
@@ -159,9 +205,10 @@ struct private_handle_t
 
 	enum
 	{
-		PRIV_FLAGS_FRAMEBUFFER = 0x00000001,
-		PRIV_FLAGS_USES_UMP    = 0x00000002,
-		PRIV_FLAGS_USES_ION    = 0x00000004
+		PRIV_FLAGS_FRAMEBUFFER       = 0x00000001,
+		PRIV_FLAGS_USES_UMP          = 0x00000002,
+		PRIV_FLAGS_USES_ION          = 0x00000004,
+		PRIV_FLAGS_USES_ION_DMA_HEAP = 0x00000008
 	};
 
 	enum
@@ -193,13 +240,15 @@ struct private_handle_t
 	int        magic;
 	int        req_format;
 	uint64_t   internal_format;
-	int        byte_stride;
 	int        flags;
 	int        usage;
 	int        size;
 	int        width;
 	int        height;
+	int        internalWidth;
+	int        internalHeight;
 	int        stride;
+	int        byte_stride;
 	int     type;
 	int     format;
 	// Rk: add for video special process
@@ -241,7 +290,12 @@ struct private_handle_t
 		uint64_t padding5;
 	};
 #endif
-
+	/*
+	 * min_pgsz denotes minimum phys_page size used by this buffer.
+	 * if buffer memory is physical contiguous set min_pgsz to buff->size
+	 * if not sure buff's real phys_page size, you can use SZ_4K for safe.
+	 */
+	int min_pgsz;
 #ifdef __cplusplus
 	/*
 	 * We track the number of integers in the structure. There are 16 unconditional

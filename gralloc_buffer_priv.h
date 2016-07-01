@@ -27,26 +27,26 @@
 
 struct attr_region
 {
-	int crop_bottom;
-	int crop_left;
+	/* Rectangle to be cropped from the full frame (Origin in top-left corner!) */
 	int crop_top;
-	int crop_right;
+	int crop_left;
+	int crop_height;
+	int crop_width;
 	int use_yuv_transform;
 	int use_sparse_alloc;
-
 } __attribute__ ((packed));
 
 typedef struct attr_region attr_region;
 
 enum
 {
-	/* CROP and YUV_TRANS are intended to be
+	/* CROP_RECT and YUV_TRANS are intended to be
 	 * written by producers and read by consumers.
-	 * Producers should write these parameters before
+	 * A producer should write these parameters before
 	 * it queues a buffer to the consumer.
 	 */
 
-	/* CROP RECT, defined as a uint32_t array of bottom,left,top,right. */
+	/* CROP RECT, defined as an int array of top, left, height, width. Origin in top-left corner */
 	GRALLOC_ARM_BUFFER_ATTR_CROP_RECT                  = 1,
 
 	/* Set if the AFBC format used a YUV transform before compressing */
@@ -54,7 +54,6 @@ enum
 
 	/* Set if the AFBC format uses sparse allocation */
 	GRALLOC_ARM_BUFFER_ATTR_AFBC_SPARSE_ALLOC          = 3,
-
 	GRALLOC_ARM_BUFFER_ATTR_LAST
 };
 
@@ -66,7 +65,7 @@ typedef uint32_t buf_attr;
  *
  * Return 0 on success.
  */
-int gralloc_buffer_attr_allocate( private_handle_t *hnd );
+int gralloc_buffer_attr_allocate( struct private_handle_t *hnd );
 
 /*
  * Frees the shared memory allocated for attribute storage.
@@ -74,7 +73,7 @@ int gralloc_buffer_attr_allocate( private_handle_t *hnd );
 
  * Return 0 on success.
  */
-int gralloc_buffer_attr_free( private_handle_t *hnd );
+int gralloc_buffer_attr_free( struct private_handle_t *hnd );
 
 /*
  * Map the attribute storage area before attempting to
@@ -82,7 +81,7 @@ int gralloc_buffer_attr_free( private_handle_t *hnd );
  *
  * Return 0 on success.
  */
-static inline int gralloc_buffer_attr_map( private_handle_t *hnd, bool readwrite)
+static inline int gralloc_buffer_attr_map( struct private_handle_t *hnd, int readwrite)
 {
 	int rval = -1;
 	int prot_flags = PROT_READ;
@@ -119,7 +118,7 @@ out:
  *
  * Return 0 on success.
  */
-static inline int gralloc_buffer_attr_unmap( private_handle_t *hnd )
+static inline int gralloc_buffer_attr_unmap( struct private_handle_t *hnd )
 {
 	int rval = -1;
 
@@ -144,7 +143,7 @@ out:
  *
  * Return 0 on success.
  */
-static inline int gralloc_buffer_attr_write( private_handle_t *hnd, buf_attr attr, int *val )
+static inline int gralloc_buffer_attr_write( struct private_handle_t *hnd, buf_attr attr, int *val )
 {
 	int rval = -1;
 
@@ -158,7 +157,7 @@ static inline int gralloc_buffer_attr_write( private_handle_t *hnd, buf_attr att
 		switch( attr )
 		{
 			case GRALLOC_ARM_BUFFER_ATTR_CROP_RECT:
-				memcpy( &region->crop_bottom, val, sizeof(int)*4 );
+				memcpy( &region->crop_top, val, sizeof(int)*4 );
 				rval = 0;
 				break;
 
@@ -178,7 +177,7 @@ out:
 	return rval;
 }
 
-static inline int gralloc_buffer_attr_read( private_handle_t *hnd, buf_attr attr, int *val )
+static inline int gralloc_buffer_attr_read( struct private_handle_t *hnd, buf_attr attr, int *val )
 {
 	int rval = -1;
 
@@ -192,7 +191,7 @@ static inline int gralloc_buffer_attr_read( private_handle_t *hnd, buf_attr attr
 		switch( attr )
 		{
 			case GRALLOC_ARM_BUFFER_ATTR_CROP_RECT:
-				memcpy( val, &region->crop_bottom, sizeof(int)*4 );
+				memcpy( val, &region->crop_top, sizeof(int)*4 );
 				rval = 0;
 				break;
 

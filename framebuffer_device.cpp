@@ -19,6 +19,7 @@
 #include <string.h>
 #include <errno.h>
 #include <fcntl.h>
+#include <stdlib.h>
 #include <sys/ioctl.h>
 #include <linux/fb.h>
 
@@ -237,7 +238,6 @@ int init_frame_buffer_locked(struct private_module_t* module)
 	info.reserved[0] = 0;
 	info.reserved[1] = 0;
 	info.reserved[2] = 0;
-	info.reserved[3] = 1;
 	info.xoffset = 0;
 	info.yoffset = 0;
 	info.activate = FB_ACTIVATE_NOW;
@@ -281,7 +281,7 @@ int init_frame_buffer_locked(struct private_module_t* module)
 	 */
 	info.yres_virtual = info.yres * NUM_BUFFERS;
 
-	//ioctl(fd, RK_FBIOSET_CLEAR_FB, NULL);
+	ioctl(fd, RK_FBIOSET_CLEAR_FB, NULL);
 	uint32_t flags = PAGE_FLIP;
 	if (ioctl(fd, FBIOPUT_VSCREENINFO, &info) == -1)
 	{
@@ -400,7 +400,7 @@ int init_frame_buffer_locked(struct private_module_t* module)
 		return -errno;
 	}
 
-	//memset(vaddr, 0, fbSize);
+	memset(vaddr, 0, fbSize);
 
 	module->flags = flags;
 	module->info = info;
@@ -443,7 +443,7 @@ static int fb_close(struct hw_device_t *device)
 #if GRALLOC_ARM_UMP_MODULE
 		ump_close();
 #endif
-		delete dev;
+		free(dev);
 	}
 	return 0;
 }
@@ -472,6 +472,15 @@ int framebuffer_device_open(hw_module_t const* module, const char* name, hw_devi
 	int status = -EINVAL;
 
 	alloc_device_t* gralloc_device;
+#if DISABLE_FRAMEBUFFER_HAL == 1
+	AERR("Framebuffer HAL not support/disabled %s",
+#ifdef MALI_DISPLAY_VERSION
+	"with MALI display enable");
+#else
+	"");
+#endif
+	return -ENODEV;
+#endif
 	status = gralloc_open(module, &gralloc_device);
 	if (status < 0)
 	{
@@ -480,14 +489,31 @@ int framebuffer_device_open(hw_module_t const* module, const char* name, hw_devi
 
 	private_module_t* m = (private_module_t*)module;
 	status = init_frame_buffer(m);
-	if (status < 0)
+
+	/* malloc is used instead of 'new' to instantiate the struct framebuffer_device_t
+	 * C++11 spec specifies that if a class/struct has a const member,default constructor 
+	 * is deleted. So, if 'new' is used to instantiate the class/struct, it will throw
+	 * error complaining about deleted constructor. Even if the struct is wrapped in a class
+	 * it will still try to use the base class constructor to initialize the members, resulting 
+	 * in error 'deleted constructor'.
+	 * This leaves two options 
+	 * Option 1: initialize the const members at the instantiation time. With {value1, value2 ..}
+	 * Which relies on the order of the members, and if members are reordered or a new member is introduced
+	 * it will end up assiging wrong value to members. Designated assignment as well has been removed in C++11
+	 * Option 2: use malloc instead of 'new' to allocate the class/struct and initialize the members in code. 
+	 * This is the only maintainable option available.
+	 */
+
+	framebuffer_device_t *dev =  reinterpret_cast<framebuffer_device_t*> (malloc(sizeof(framebuffer_device_t)));
+
+	/* if either or both of init_frame_buffer() and malloc failed */
+	if ((status < 0) || (!dev))
 	{
 		gralloc_close(gralloc_device);
+		(!dev)?	(void)(status = -ENOMEM) : free(dev);
 		return status;
 	}
 
-	/* initialize our state here */
-	framebuffer_device_t *dev = new framebuffer_device_t();
 	memset(dev, 0, sizeof(*dev));
 
 	/* initialize the procs */

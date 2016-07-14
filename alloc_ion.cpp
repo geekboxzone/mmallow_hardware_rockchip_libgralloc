@@ -264,8 +264,8 @@ int alloc_backend_alloc(alloc_device_t* dev, size_t size, int usage, buffer_hand
 	}
 
 #ifdef USE_RK_ION
-	ALOGD("[%d,%d,%d], usage=%x,ion_heap_type=%d", m->ion_client, size, ion_flags, usage,ion_heap_type);   
-	ALOGD("heap_mask=%x,ION_HEAP=%x",heap_mask, ION_HEAP(ION_CMA_HEAP_ID));
+	//ALOGD("[%d,%d,%d], usage=%x,ion_heap_type=%d", m->ion_client, size, ion_flags, usage,ion_heap_type);   
+	//ALOGD("heap_mask=%x,ION_HEAP=%x",heap_mask, ION_HEAP(ION_CMA_HEAP_ID));
 	ret = ion_alloc(m->ion_client, size, 0, heap_mask, ion_flags, &ion_hnd);
 	if ( ret != 0 ) 
 	{

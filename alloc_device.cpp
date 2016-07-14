@@ -808,7 +808,7 @@ static int alloc_device_alloc(alloc_device_t* dev, int w, int h, int format, int
         E("err.");
 		return -EINVAL;
 	}
-	ALOGD("-----------------------------START usage=%x",usage);
+	//ALOGD("-----------------------------START usage=%x",usage);
 	size_t size;       // Size to be allocated for the buffer
 	int byte_stride;   // Stride of the buffer in bytes
 	int pixel_stride;  // Stride of the buffer in pixels - as returned in pStride
@@ -1132,7 +1132,7 @@ static int alloc_device_alloc(alloc_device_t* dev, int w, int h, int format, int
 	hnd->internalWidth = internalWidth;
 	hnd->internalHeight = internalHeight;
 
-    ALOGD("Isfb=%x,[%d,%d,%d,%d],fmt=%d,byte_stride=%d",usage & GRALLOC_USAGE_HW_FB,hnd->width,hnd->height,hnd->stride,hnd->byte_stride,hnd->format,byte_stride);
+   // ALOGD("Isfb=%x,[%d,%d,%d,%d],fmt=%d,byte_stride=%d",usage & GRALLOC_USAGE_HW_FB,hnd->width,hnd->height,hnd->stride,hnd->byte_stride,hnd->format,byte_stride);
 
     *pStride = pixel_stride;
 
